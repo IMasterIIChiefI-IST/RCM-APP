@@ -1,0 +1,55 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/Layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/light_blue_600"
+    android:padding="@dimen/widget_margin"
+    android:theme="@style/ThemeOverlay.Application_wifi.AppWidgetContainer">
+
+    <TextView
+        android:id="@+id/appwidget_text_bot"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/appwidget_text_top"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="14dp"
+        android:layout_toEndOf="@+id/imageButton2"
+        android:autofillHints=""
+        android:clickable="false"
+        android:text="@string/appwidget_text_bot"
+        android:textColor="@color/light_blue_50"
+        android:textSize="24sp"
+        android:textStyle="bold|italic" />
+
+    <TextView
+        android:id="@+id/appwidget_text_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="3dp"
+        android:layout_toEndOf="@+id/progressBar"
+        android:autofillHints=""
+        android:clickable="false"
+        android:contentDescription="@string/appwidget_text_bot"
+        android:text="@string/appwidget_text_top"
+        android:textColor="@color/light_blue_50"
+        android:textSize="24sp"
+        android:textStyle="bold|italic" />
+
+    <ImageButton
+        android:id="@+id/imageButton2"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_below="@+id/progressBar"
+        android:layout_marginTop="8dp"
+        app:srcCompat="@android:drawable/radiobutton_off_background" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progressTint="#FFFFFF" />
+
+</RelativeLayout>
