@@ -17,6 +17,7 @@ import android.net.wifi.WifiManager.WIFI_STATE_ENABLING
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
+import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -205,7 +206,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 sensorManager.registerListener(this, grav_sensor, Update_period)
                 pManager = this.applicationContext.getSystemService(POWER_SERVICE) as PowerManager
                 ids = appWidgetManager.getAppWidgetIds(NewAppWidget)
-                appWidgetManager.updateAppWidget(ComponentName(this.packageName,Application_Wifi::Java.Class),)
+                appWidgetManager.updateAppWidget(ComponentName(this.packageName,NewAppWidget::javaClass.get(NewAppWidget())),RemoteViews(this.packageName, com.example.application_wifi.R.layout.new_app_widget))
                 AppWidgetHost = AppWidgetHost(this, R.id.APPWIDGET_HOST_ID)
                 //acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
                 //grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
