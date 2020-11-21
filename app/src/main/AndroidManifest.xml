@@ -28,7 +28,7 @@
                 android:resource="@xml/new_app_widget_info" />
         </receiver>
 
-        <receiver android:name=".Application_broadcast">
+        <receiver android:name=".">
             <intent-filter>
                 <action android:name="android.net.wifi.STATE_CHANGE" />
                 <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />

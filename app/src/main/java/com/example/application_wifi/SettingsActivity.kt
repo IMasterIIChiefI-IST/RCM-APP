@@ -39,7 +39,7 @@ class SettingsActivity : AppCompatActivity() {
 
 
         SW_On_Off.setOnClickListener {
-
+            val wmanager = application as Application_Wifi)
             //SW_On_Off.isClickable = (application as Application_Wifi).checkNetwork()
             TODO("Not yet implemented")
         }

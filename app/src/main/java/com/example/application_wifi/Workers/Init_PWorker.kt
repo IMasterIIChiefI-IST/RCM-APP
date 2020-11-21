@@ -1,6 +1,6 @@
 package com.example.application_wifi.Workers
 
-import android.R
+
 import android.app.Application
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
@@ -37,7 +37,8 @@ class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters)
     }
 
     fun init() {
-        if (this::wManager.isInitialized) {
+
+        if (Application_Wifi.wManager.isInitialized) {
             wManager = this.applicationContext.getSystemService(Application.WIFI_SERVICE) as WifiManager
         }
         if (WifiManager.WIFI_STATE_ENABLED != wManager.wifiState && WifiManager.WIFI_STATE_ENABLING != wManager.wifiState) {

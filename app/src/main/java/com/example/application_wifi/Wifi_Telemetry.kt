@@ -55,9 +55,9 @@ class Application_Wifi : Application(), SensorEventListener {
 
     lateinit var wManager: WifiManager
     lateinit var pManager: PowerManager
-    val appWidgetManager: AppWidgetManager= AppWidgetManager.getInstance(this)
+    val appWidgetManager: AppWidgetManager = AppWidgetManager.getInstance(this)
     var ids = IntArray(0)
-    lateinit var appWidgetHost : AppWidgetHost
+    lateinit var appWidgetHost: AppWidgetHost
     val workManager: WorkManager = WorkManager.getInstance(this)
     lateinit var sensorManager: SensorManager
     lateinit var acc_sensor: Sensor
@@ -70,6 +70,7 @@ class Application_Wifi : Application(), SensorEventListener {
     var Update_period: Int = 500000
 
 
+    @RequiresApi(Build.VERSION_CODES.R)
     data class SensorData(
         val x: Float,
         val y: Float,
@@ -81,9 +82,14 @@ class Application_Wifi : Application(), SensorEventListener {
         val SSID: String,
         val BSSID: String,
         val rssi: Int,
-        val level: Int,
         val Frequency: Int
     ) {
+        fun ToString(): String {
+            val builder = StringBuilder()
+            builder.append(SSID).append(" ").append(BSSID).append(" ").append(rssi.toString())
+                .append(" ").append(Frequency.toString()).append("//").append("\n")
+            return builder.toString()
+        }
     }
 
     private fun checkNetwork(): Boolean =
@@ -108,13 +114,12 @@ class Application_Wifi : Application(), SensorEventListener {
         }
 
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    private fun wifiGetInfo() {
-
-        //fazer a media durante X tempo !!!!!!!!!!!
-
+    fun wifiGetInfo() {
         var wifiList = wManager.scanResults;
-        wifiList = wifiList.filter { it.SSID.contains(target_connection.SSID, ignoreCase = true) }
+        wifiList = wifiList.filter {
+            it.SSID.contains(target_connection.SSID,
+                ignoreCase = true) && it.frequency != -1
+        }
         val wifiInfo =
             (this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).connectionInfo
         wifi_info_results = wifiList.map {
@@ -122,37 +127,47 @@ class Application_Wifi : Application(), SensorEventListener {
                 it.SSID,
                 it.BSSID,
                 it.level,
-                wManager.calculateSignalLevel(it.level),
                 it.frequency
             )
         }
-        my_connection_results = WifiInfo(wifiInfo.ssid,
-            wifiInfo.bssid,
-            wManager.connectionInfo.rssi,
-            wManager.calculateSignalLevel(wManager.connectionInfo.rssi),
-            wifiInfo.frequency)
+        if (wifiInfo.frequency != -1) {
+            my_connection_results = WifiInfo(
+                wifiInfo.ssid,
+                wifiInfo.bssid,
+                wManager.connectionInfo.rssi,
+                wifiInfo.frequency
+            )
+        } else {
+            my_connection_results = WifiInfo(
+                "N/Connected",
+                "0",
+                0,
+                0
+            )
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
     override fun onCreate() {
         super.onCreate()
         // TARGET CONNECTION CREATION
-        target_connection = WifiInfo("eduroam", "MAC", 0, 0, 0)
+        target_connection = WifiInfo("eduroam", "MAC", 0, 0)
         //Var INITIALIZATION
-        if (this::wManager.isInitialized) {
+        if (!this::wManager.isInitialized) {
             wManager = this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
         }
         // INITIALIZATION JOB
         val init_constraints = Constraints.Builder()
-            .setRequiresCharging(true)
             .setRequiresBatteryNotLow(true)
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .also {
-               checkNetwork()
+                checkNetwork()
+                val a = workManager.getWorkInfoById("Get_info")
+                //verificar se existe o next worker a executar
             }
             .build()
-        val WInit = PeriodicWorkRequest.Builder(Init_PWorker, 30, TimeUnit.SECONDS).setConstraints(
-            init_constraints).build()
+        val WInit = PeriodicWorkRequest.Builder(Init_PWorker, 10, TimeUnit.SECONDS)
+            .setConstraints(init_constraints).build()
         workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, WInit)
 
         // INITIALIZATION JOB
@@ -195,7 +210,7 @@ class Application_Wifi : Application(), SensorEventListener {
         if (this::wManager.isInitialized) {
             wManager = this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
         }
-        if (WIFI_STATE_ENABLED != wManager.wifiState && WIFI_STATE_ENABLING != wManager.wifiState) {
+        if (WIFI_STATE_ENABLED != wManager.wifiState) {
             var myToast = Toast.makeText(applicationContext,
                 "Por Favor Ligar O Wifi",
                 Toast.LENGTH_SHORT)
@@ -205,9 +220,11 @@ class Application_Wifi : Application(), SensorEventListener {
                 sensorManager.registerListener(this, acc_sensor, Update_period)
                 sensorManager.registerListener(this, grav_sensor, Update_period)
                 pManager = this.applicationContext.getSystemService(POWER_SERVICE) as PowerManager
-                ids = appWidgetManager.getAppWidgetIds(NewAppWidget)
-                appWidgetManager.updateAppWidget(ComponentName(this.packageName,NewAppWidget::javaClass.get(NewAppWidget())),RemoteViews(this.packageName, com.example.application_wifi.R.layout.new_app_widget))
-                AppWidgetHost = AppWidgetHost(this, R.id.APPWIDGET_HOST_ID)
+                appWidgetManager.updateAppWidget(ComponentName(applicationContext,
+                    NewAppWidget::javaClass.get(NewAppWidget())),
+                    RemoteViews(this.packageName, com.example.application_wifi.R.layout.new_app_widget))
+                ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
+                    NewAppWidget::javaClass.get(NewAppWidget()))))
                 //acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
                 //grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
             } else {
