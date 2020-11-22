@@ -1,30 +1,46 @@
-package com.example.application_wifi.Workers
+package com.example.application_wifi
 
 
 import android.app.Application
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.PowerManager
 import android.util.Log
+import android.widget.RemoteViews
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.work.PeriodicWorkRequest
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import com.example.application_wifi.Application_Wifi
+import com.example.application_wifi.NewAppWidget
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.*
 
 
-class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters):Worker , PeriodicWorkRequest(appContext: Application_Wifi, workerParams: WorkerParameters) {
+class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters) : Worker(appContext, workerParams),
+    PeriodicWorkRequest(appContext, workerParams) {
 
-        override fun doWork(): Result {
+    override fun getId(): UUID {
+        TODO("Not yet implemented")
+    }
+
+    override fun getTags(): MutableSet<String> {
+        TODO("Not yet implemented")
+    }
+
+    override fun doWork(): Result {
         return try {
             try {
                 Log.d("MyWorker", "Run work manager")
-                //Do Your task here
-                init()
+                val context = applicationContext
+                init(applicationWifi)
                 Result.success()
             } catch (e: Exception) {
                 Log.d("MyWorker", "exception in doWork ${e.message}")
@@ -36,12 +52,11 @@ class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters)
         }
     }
 
-    fun init() {
-
-        if (Application_Wifi.wManager.isInitialized) {
-            wManager = this.applicationContext.getSystemService(Application.WIFI_SERVICE) as WifiManager
-        }
-        if (WifiManager.WIFI_STATE_ENABLED != wManager.wifiState && WifiManager.WIFI_STATE_ENABLING != wManager.wifiState) {
+    fun init(applicationWifi: Application_Wifi): Boolean {
+        applicationWifi.isinitialized
+        applicationWifi.wManager =
+            applicationContext.getSystemService(Application.WIFI_SERVICE) as WifiManager
+        if (WifiManager.WIFI_STATE_ENABLED != wManager.wifiState) {
             var myToast = Toast.makeText(applicationContext,
                 "Por Favor Ligar O Wifi",
                 Toast.LENGTH_SHORT)
@@ -50,21 +65,19 @@ class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters)
             if (checkNetwork()) {
                 sensorManager.registerListener(this, acc_sensor, Update_period)
                 sensorManager.registerListener(this, grav_sensor, Update_period)
-                pManager = this.applicationContext.getSystemService(Application.POWER_SERVICE) as PowerManager
-                mAppWidgetManager = AppWidgetManager.getInstance(this)
-                mAppWidgetHost = AppWidgetHost(this, R.id.APPWIDGET_HOST_ID)
+                pManager =
+                    this.applicationContext.getSystemService(Application.POWER_SERVICE) as PowerManager
+                appWidgetManager.updateAppWidget(ComponentName(applicationContext,
+                    NewAppWidget::javaClass.get(NewAppWidget())),
+                    RemoteViews(this.packageName, R.layout.new_app_widget))
+                //ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
+                //    NewAppWidget::javaClass.get(NewAppWidget()))))
                 //acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
                 //grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
+                return true
             } else {
-                // COMEÇAR UM WORKER QUE CHECK DOS PAREMETRO DE INICIALIZAÇAO
-                GlobalScope.launch {
-                    repeat(1000) {
-                        delay(1000L)
-                        init()
-                    }
-                }
+                return false
             }
         }
     }
-
 }

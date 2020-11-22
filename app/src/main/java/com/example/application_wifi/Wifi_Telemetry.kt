@@ -1,16 +1,14 @@
 package com.example.application_wifi
 
-import android.R
-import android.R.style.Widget
 import android.app.Application
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
-import android.content.ComponentName
-import android.content.Context
+import android.content.*
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiManager.WIFI_STATE_ENABLED
 import android.net.wifi.WifiManager.WIFI_STATE_ENABLING
@@ -20,11 +18,10 @@ import android.util.Log
 import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.work.*
 import com.example.application_wifi.Workers.Init_PWorker
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -33,12 +30,17 @@ import java.util.concurrent.TimeUnit
 // https://developer.android.com/guide/topics/appwidgets/index.html#CreatingLayout
 // https://developer.android.com/reference/android/net/wifi/package-summary
 // https://developer.android.com/reference/android/net/wifi/rtt/package-summary
+
+
+//https://stackoverflow.com/questions/8317331/detecting-when-screen-is-locked !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 /*
 Aplicaçao corre apenas
 quando esta ligado ao Eduroam
 quando não se esta a mexer
 quando o telemovel esta em Low State em Usage
 */
+
+
 
 class Application_Wifi : Application(), SensorEventListener {
 
@@ -75,50 +77,36 @@ class Application_Wifi : Application(), SensorEventListener {
         val x: Float,
         val y: Float,
         val z: Float
-    ) {
-    }
+    )
 
     data class WifiInfo(
         val SSID: String,
         val BSSID: String,
         val rssi: Int,
-        val Frequency: Int
-    ) {
-        fun ToString(): String {
-            val builder = StringBuilder()
-            builder.append(SSID).append(" ").append(BSSID).append(" ").append(rssi.toString())
-                .append(" ").append(Frequency.toString()).append("//").append("\n")
-            return builder.toString()
-        }
-    }
+        val frequency: Int
+    )
 
-    private fun checkNetwork(): Boolean =
+    fun checkNetwork(): Boolean =
         if (WIFI_STATE_ENABLED != wManager.wifiState && WIFI_STATE_ENABLING != wManager.wifiState) {
-            val myToast = Toast.makeText(applicationContext,
+            Toast.makeText(applicationContext,
                 "Por Favor Ligar O Wifi",
-                Toast.LENGTH_SHORT)
-            myToast.show()
+                Toast.LENGTH_SHORT).show()
             false
         } else {
             if (!my_connection_results.SSID.contains(target_connection.SSID, ignoreCase = true)) {
-                val myToast = Toast.makeText(
+                Toast.makeText(
                     applicationContext,
                     "Por Favor Ligar a rede eduroam",
                     Toast.LENGTH_SHORT
-                )
-                myToast.show()
+                ).show()
                 false
-            } else {
-                true
-            }
+            } else true
         }
 
 
     fun wifiGetInfo() {
-        var wifiList = wManager.scanResults;
-        wifiList = wifiList.filter {
-            it.SSID.contains(target_connection.SSID,
-                ignoreCase = true) && it.frequency != -1
+        val wifiList = wManager.scanResults.filter {
+            it.SSID.contains(target_connection.SSID, ignoreCase = true) && it.frequency != -1
         }
         val wifiInfo =
             (this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).connectionInfo
@@ -138,6 +126,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 wifiInfo.frequency
             )
         } else {
+            //Cancel all jobs
             my_connection_results = WifiInfo(
                 "N/Connected",
                 "0",
@@ -147,9 +136,37 @@ class Application_Wifi : Application(), SensorEventListener {
         }
     }
 
+    private val broadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent?) {
+            val connectivityManager =
+                context.getSystemService(Application.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetInfo = connectivityManager.activeNetworkInfo
+            if (activeNetInfo != null
+                && activeNetInfo.type == ConnectivityManager.TYPE_WIFI
+            ) {
+                Toast.makeText(context, "Wifi Connected!", Toast.LENGTH_SHORT).show()
+                if (checkNetwork()) {
+
+                } else {
+                    //CANCEL ALL JOBS
+                }
+            } else {
+                Toast.makeText(context, "Wifi Not Connected!", Toast.LENGTH_SHORT).show()
+                //CANCEL ALL JOBS
+            }
+        }
+
+    }
+
+
     @RequiresApi(Build.VERSION_CODES.M)
     override fun onCreate() {
         super.onCreate()
+
+        registerReceiver(broadcastReceiver, IntentFilter().apply {
+            addAction("android.net.wifi.STATE_CHANGE")
+            addAction("android.net.conn.CONNECTIVITY_CHANGE")
+        })
         // TARGET CONNECTION CREATION
         target_connection = WifiInfo("eduroam", "MAC", 0, 0)
         //Var INITIALIZATION
@@ -157,37 +174,53 @@ class Application_Wifi : Application(), SensorEventListener {
             wManager = this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
         }
         // INITIALIZATION JOB
+
+        val job = GlobalScope.launch(Dispatchers.IO) {
+            if (WIFI_STATE_ENABLED != wManager.wifiState) {
+                //launch(Dispatchers.Main) { // TODO understand if necessary
+                Toast.makeText(applicationContext,
+                    "Por Favor Ligar O Wifi",
+                    Toast.LENGTH_SHORT).show()
+                //}
+            } else {
+                if (checkNetwork()) {
+                    sensorManager.registerListener(this@Application_Wifi, acc_sensor, Update_period)
+                    sensorManager.registerListener(this@Application_Wifi,
+                        grav_sensor,
+                        Update_period)
+                    pManager =
+                        applicationContext.getSystemService(POWER_SERVICE) as PowerManager
+                    appWidgetManager.updateAppWidget(
+                        ComponentName(applicationContext, NewAppWidget::class.java),
+                        RemoteViews(packageName, R.layout.new_app_widget)
+                    )
+                    //ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
+                    //    NewAppWidget::javaClass.get(NewAppWidget()))))
+                    //acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
+                    //grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
+                }
+
+            }
+        }
+
+        //GlobalScope.launch {}
         val init_constraints = Constraints.Builder()
             .setRequiresBatteryNotLow(true)
             .setRequiredNetworkType(NetworkType.CONNECTED)
-            .also {
-                checkNetwork()
-                val a = workManager.getWorkInfoById("Get_info")
-                //verificar se existe o next worker a executar
-            }
             .build()
         val WInit = PeriodicWorkRequest.Builder(Init_PWorker, 10, TimeUnit.SECONDS)
             .setConstraints(init_constraints).build()
         workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, WInit)
-
         // INITIALIZATION JOB
-
         init()
     }
 
     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
 
     override fun onSensorChanged(event: SensorEvent) {
-
-        //GlobalScope.launch(Dispatchers.Main) { }
-
-        if (checkNetwork()) {
-            if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                accUpdate(event)
-            }
-            if (event.sensor.type == Sensor.TYPE_GRAVITY) {
-                gravUpdate(event)
-            }
+        when (event.sensor.type) {
+            Sensor.TYPE_ACCELEROMETER -> accUpdate(event)
+            Sensor.TYPE_GRAVITY -> gravUpdate(event)
         }
     }
 
@@ -205,67 +238,12 @@ class Application_Wifi : Application(), SensorEventListener {
             (event.values[2] + grav_data.z) / 2)
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    fun init() {
-        if (this::wManager.isInitialized) {
-            wManager = this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
-        }
-        if (WIFI_STATE_ENABLED != wManager.wifiState) {
-            var myToast = Toast.makeText(applicationContext,
-                "Por Favor Ligar O Wifi",
-                Toast.LENGTH_SHORT)
-            myToast.show()
-        } else {
-            if (checkNetwork()) {
-                sensorManager.registerListener(this, acc_sensor, Update_period)
-                sensorManager.registerListener(this, grav_sensor, Update_period)
-                pManager = this.applicationContext.getSystemService(POWER_SERVICE) as PowerManager
-                appWidgetManager.updateAppWidget(ComponentName(applicationContext,
-                    NewAppWidget::javaClass.get(NewAppWidget())),
-                    RemoteViews(this.packageName, com.example.application_wifi.R.layout.new_app_widget))
-                ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
-                    NewAppWidget::javaClass.get(NewAppWidget()))))
-                //acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
-                //grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
-            } else {
-                // COMEÇAR UM WORKER QUE CHECK DOS PAREMETRO DE INICIALIZAÇAO
-                GlobalScope.launch {
-                    repeat(1000) {
-                        delay(1000L)
-                        init()
-                    }
-                }
-            }
-        }
-    }
 
     override fun onTerminate() {
         super.onTerminate()
         sensorManager.unregisterListener(this)
         workManager.cancelAllWorkByTag("UI")
         TODO("apagar as threads todas")
-    }
-}
-
-object Check_init {
-
-    fun refreshPeriodicWork(context: Context) {
-
-
-        //define constraints
-        val myConstraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val refreshCpnWork = PeriodicWorkRequest.Builder(MyWorker::class.java, 10, TimeUnit.SECONDS)
-            .setConstraints(myConstraints)
-            .addTag("UI")
-            .build()
-
-
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork("CI",
-            ExistingPeriodicWorkPolicy.REPLACE, refreshCpnWork)
-
     }
 }
 
