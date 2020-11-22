@@ -184,7 +184,9 @@ class Application_Wifi : Application(), SensorEventListener {
                 //}
             } else {
                 if (checkNetwork()) {
-                    sensorManager.registerListener(this@Application_Wifi, acc_sensor, Update_period)
+                    sensorManager.registerListener(this@Application_Wifi,
+                        acc_sensor,
+                        Update_period)
                     sensorManager.registerListener(this@Application_Wifi,
                         grav_sensor,
                         Update_period)
