@@ -8,24 +8,28 @@ import android.content.ComponentName
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Parcel
+import android.os.Parcelable
 import android.os.PowerManager
 import android.util.Log
 import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.annotation.RequiresApi
+import androidx.work.ListenableWorker
 import androidx.work.PeriodicWorkRequest
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import com.example.application_wifi.Application_Wifi
 import com.example.application_wifi.NewAppWidget
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.*
 
 
-class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters) : Worker(appContext, workerParams),
-    PeriodicWorkRequest(appContext, workerParams) {
+class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters) : ListenableWorker() {
+
 
     override fun getId(): UUID {
         TODO("Not yet implemented")
@@ -35,12 +39,16 @@ class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters)
         TODO("Not yet implemented")
     }
 
+    override fun startWork(): ListenableFuture<Result> {
+        TODO("Not yet implemented")
+    }
+
     override fun doWork(): Result {
         return try {
             try {
+
                 Log.d("MyWorker", "Run work manager")
-                val context = applicationContext
-                init(applicationWifi)
+                init()
                 Result.success()
             } catch (e: Exception) {
                 Log.d("MyWorker", "exception in doWork ${e.message}")
@@ -53,7 +61,6 @@ class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters)
     }
 
     fun init(applicationWifi: Application_Wifi): Boolean {
-        applicationWifi.isinitialized
         applicationWifi.wManager =
             applicationContext.getSystemService(Application.WIFI_SERVICE) as WifiManager
         if (WifiManager.WIFI_STATE_ENABLED != wManager.wifiState) {
@@ -78,6 +85,24 @@ class Init_PWorker(appContext: Application_Wifi, workerParams: WorkerParameters)
             } else {
                 return false
             }
+        }
+    }
+
+    override fun writeToParcel(parcel: Parcel, flags: Int) {
+
+    }
+
+    override fun describeContents(): Int {
+        return 0
+    }
+
+    companion object CREATOR : Parcelable.Creator<Init_PWorker> {
+        override fun createFromParcel(parcel: Parcel): Init_PWorker {
+            return Init_PWorker(parcel)
+        }
+
+        override fun newArray(size: Int): Array<Init_PWorker?> {
+            return arrayOfNulls(size)
         }
     }
 }

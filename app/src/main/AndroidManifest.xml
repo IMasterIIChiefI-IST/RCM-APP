@@ -3,12 +3,16 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.application_wifi">
 
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.BIND_APPWIDGET"
+    <user-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission
+        android:name="android.permission.BIND_APPWIDGET"
         tools:ignore="ProtectedPermissions" />
+
     <uses-feature android:name="android.hardware.wifi" />
 
     <application
@@ -19,6 +23,21 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Application_wifi">
+
+        <service android:name=".Send_Data" />
+
+        <service android:name=".Scan_Wifi" />
+
+        <service
+            android:name=".Send_Data"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <service
+            android:name=".Scan_Wifi"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
 
         <receiver android:name=".NewAppWidget">
             <intent-filter>
@@ -33,7 +52,8 @@
         <receiver android:name=".Application_Wifi">
             <intent-filter>
                 <action android:name="android.net.wifi.STATE_CHANGE" />
-                <action android:name="android.net.conn.CONNECTIVITY_CHANGE"
+                <action
+                    android:name="android.net.conn.CONNECTIVITY_CHANGE"
                     tools:ignore="BatteryLife" />
             </intent-filter>
         </receiver>
@@ -47,14 +67,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <receiver android:name=".receiver.PlugInControlReceiver">
-            <intent-filter>
-                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
-                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
-            </intent-filter>
-        </receiver>
-
+        <!--
+                <receiver android:name=".receiver.PlugInControlReceiver">
+                    <intent-filter>
+                        <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                        <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+                    </intent-filter>
+                </receiver>
+        -->
     </application>
 
 </manifest>
