@@ -19,17 +19,17 @@ import android.util.Log
 import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.work.WorkManager
+import androidx.work.*
 import kotlinx.coroutines.*
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.math.sqrt
 
 
 // https://developer.android.com/guide/topics/sensors
 // https://developer.android.com/guide/topics/appwidgets/index.html#CreatingLayout
 // https://developer.android.com/reference/android/net/wifi/package-summary
 // https://developer.android.com/reference/android/net/wifi/rtt/package-summary
-
-
-//https://stackoverflow.com/questions/8317331/detecting-when-screen-is-locked !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// https://stackoverflow.com/questions/8317331/detecting-when-screen-is-locked !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 /*
 Aplicaçao corre apenas
 quando esta ligado ao Eduroam
@@ -44,6 +44,36 @@ class Application_Wifi : Application(), SensorEventListener {
     private val TIMESONSORREAD = 2
     private val MAXTRY = 10
 
+/*
+    class Event<T> {
+        private val handlers = arrayListOf<(Event<T>.(T) -> Unit)>()
+        operator fun plusAssign(handler: Event<T>.(T) -> Unit) {
+            handlers.add(handler)
+        }
+
+        operator fun invoke(value: T) {
+            for (handler in handlers) handler(value)
+        }
+
+        private var singletonDuck = Duck();
+
+        class Duck {
+            val onTalk = Event<String>()
+
+            fun poke() {
+                onTalk("Quaak!")
+            }
+        }
+
+        public fun subcribeToDuck(lmbd: Event<String>.(String) -> Unit) {
+            singletonDuck.onTalk += lmbd;
+
+            singletonDuck.onTalk("")
+            singletonDuck.poke()
+        }
+    }
+*/
+
     /*
       Excellent >-50 dBm
       Good -50 to -60 dBm
@@ -56,32 +86,57 @@ class Application_Wifi : Application(), SensorEventListener {
     private val Chnnl: IntArray = intArrayOf(2412, 2417, 2422, 2427, 2432, 2437, 2442, 2447,
         2452, 2457, 2462, 2467, 2472, 2484)
 
-    var state = 0
+    var machine_State = 0
+    var failedAttempts = 0
+
     lateinit var wManager: WifiManager
     lateinit var pManager: PowerManager
     val appWidgetManager: AppWidgetManager = AppWidgetManager.getInstance(this)
     var ids = IntArray(0)
     lateinit var appWidgetHost: AppWidgetHost
     val workManager: WorkManager = WorkManager.getInstance(this)
+    val job_Scope = CoroutineScope(SupervisorJob())
+
+
     lateinit var sensorManager: SensorManager
     lateinit var acc_sensor: Sensor
     lateinit var grav_sensor: Sensor
-    lateinit var acc_data: SensorData
-    lateinit var grav_data: SensorData
-    lateinit var target_connection: WifiInfo
-    lateinit var wifi_info_results: List<WifiInfo>
-    lateinit var my_connection_results: WifiInfo
+
+
+    lateinit var target_connection: WifiData
+    lateinit var otherConnectionResults: List<WifiData>
+    lateinit var myConnectionResults: WifiData
+    private val myConnectionLock = ReentrantLock()
+    private val otherConnectionLock = ReentrantLock()
+
+
+    lateinit var accData: SensorData
+    lateinit var gravData: SensorData
+    private val accDataLock = ReentrantLock()
+    private val gravDataLock = ReentrantLock()
+
 
     var Update_period: Int = 500000
 
-
     data class SensorData(
-        val x: Float,
-        val y: Float,
-        val z: Float
-    )
+        var x: Float,
+        var y: Float,
+        var z: Float
+    ) {
+        operator fun plusAssign(add: SensorData) {
+            this.x = (this.x + add.x)
+            this.y = (this.y + add.y)
+            this.z = (this.z + add.z)
+        }
 
-    data class WifiInfo(
+        fun mean(counter: Int) {
+            this.x = this.x / counter
+            this.y = this.y / counter
+            this.z = this.z / counter
+        }
+    }
+
+    data class WifiData(
         val SSID: String,
         val BSSID: String,
         val rssi: Int,
@@ -89,59 +144,91 @@ class Application_Wifi : Application(), SensorEventListener {
         val connected: Boolean
     )
 
-    fun checkNetwork(): Boolean =
+    fun updateMyConnection(): Boolean {
         if (WIFI_STATE_ENABLED != wManager.wifiState && WIFI_STATE_ENABLING != wManager.wifiState) {
             Toast.makeText(applicationContext,
                 "Por Favor Ligar O Wifi",
                 Toast.LENGTH_SHORT).show()
-            false
+            return false
         } else {
-            if (!my_connection_results.SSID.contains(target_connection.SSID, ignoreCase = true)) {
-                Toast.makeText(
-                    applicationContext,
-                    "Por Favor Ligar a rede eduroam",
-                    Toast.LENGTH_SHORT
-                ).show()
-                false
-            } else true
+            val wifiInfo =
+                (this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).connectionInfo
+            try {
+                if (wifiInfo.frequency != -1) {
+                    myConnectionLock.lock()
+                    myConnectionResults = WifiData(
+                        wifiInfo.ssid,
+                        wifiInfo.bssid,
+                        wManager.connectionInfo.rssi,
+                        wifiInfo.frequency,
+                        true
+                    )
+                    if (!myConnectionResults.SSID.contains(target_connection.SSID,
+                            ignoreCase = true)
+                    ) {
+                        Toast.makeText(
+                            applicationContext,
+                            "Por Favor Ligar a rede eduroam",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return true
+                    } else
+                        return false
+                } else {
+                    myConnectionLock.lock()
+                    myConnectionResults = WifiData(
+                        "N/Connected",
+                        "0",
+                        0,
+                        0,
+                        false
+                    )
+                    return false
+                }
+            } finally {
+                myConnectionLock.unlock()
+            }
         }
+    }
 
-
-    fun wifiGetInfo() {
-
+    fun updateOtherConnection() {
         val wifiList = wManager.scanResults.filter {
             it.SSID.contains(target_connection.SSID, ignoreCase = true)
         }
-        val wifiInfo =
-            (this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).connectionInfo
-        wifi_info_results = wifiList.map {
-            WifiInfo(
-                it.SSID,
-                it.BSSID,
-                it.level,
-                it.frequency,
-                false
-            )
-        }
-        if (wifiInfo.frequency != -1) {
-            my_connection_results = WifiInfo(
-                wifiInfo.ssid,
-                wifiInfo.bssid,
-                wManager.connectionInfo.rssi,
-                wifiInfo.frequency,
-                true
-            )
-        } else {
-            //Cancel all jobs
-            my_connection_results = WifiInfo(
-                "N/Connected",
-                "0",
-                0,
-                0,
-                false
-            )
+        try {
+            otherConnectionLock.lock()
+            otherConnectionResults = wifiList.map {
+                WifiData(
+                    it.SSID,
+                    it.BSSID,
+                    it.level,
+                    it.frequency,
+                    false
+                )
+            }
+        } finally {
+            otherConnectionLock.unlock()
         }
     }
+
+    fun getOtherConnection(): List<WifiData>? {
+        try {
+            otherConnectionLock.lock()
+            return otherConnectionResults
+        } finally {
+            otherConnectionLock.unlock()
+        }
+    }
+
+    fun getMyconnection(): WifiData {
+        try {
+            myConnectionLock.lock()
+            return myConnectionResults
+        } finally {
+            myConnectionLock.unlock()
+        }
+    }
+
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
@@ -152,7 +239,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 && activeNetInfo.type == ConnectivityManager.TYPE_WIFI
             ) {
                 Toast.makeText(context, "Wifi Connected!", Toast.LENGTH_SHORT).show()
-                if (checkNetwork()) {
+                if (updateMyConnection()) {
 
                 } else {
                     //CANCEL ALL JOBS
@@ -170,22 +257,88 @@ class Application_Wifi : Application(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
-        state = 0
+        /*
+        val init_constraints = Constraints.Builder()
+            .setRequiresBatteryNotLow(true)
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val WInit = PeriodicWorkRequest.Builder(PWorker::class.java, 10, TimeUnit.SECONDS)
+            .setConstraints(init_constraints)
+        val data = Data.Builder()
+        data.put("application_context", this)
+        val WInit_wk = WInit.setInputData(data.build()).build()
+        workManager.enqueueUniquePeriodicWork("Program", ExistingPeriodicWorkPolicy.KEEP, WInit_wk)
+
+        val job_Scope = CoroutineScope(SupervisorJob())
+
+        job_Scope.launch {
+            try {
+                init(this@Application_Wifi)
+            } catch (e: Exception) {
+                val myToast = Toast.makeText(applicationContext, e.toString(), Toast.LENGTH_SHORT)
+                myToast.show()
+            }
+        }
+        */
+
+        machine_State = 0
+        failedAttempts = 0
+
         registerReceiver(broadcastReceiver, IntentFilter().apply {
             addAction("android.net.wifi.STATE_CHANGE")
             addAction("android.net.conn.CONNECTIVITY_CHANGE")
         })
+
+
         // TARGET CONNECTION CREATION
-        target_connection = WifiInfo("eduroam", "MAC", 0, 0)
-        //Var INITIALIZATION
+        target_connection = WifiData("eduroam", "MAC", 0, 0, true)
+
+        //INIT
         if (!this::wManager.isInitialized) {
             wManager = this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+        }
+
+        job_Scope.launch {
+            try {
+                while (failedAttempts < MAXTRY) {
+                    when (machine_State) {
+                        0 -> {
+                            if (init(this@Application_Wifi)) {
+                                machine_State++
+                                failedAttempts = 0
+                            } else {
+                                failedAttempts++
+                            }
+                        }
+                        1 -> {
+                            if (init(this@Application_Wifi)) {
+                                machine_State++
+                                failedAttempts = 0
+                            } else {
+                                failedAttempts++
+                            }
+                        }
+                        2 -> {
+
+
+                        }
+                        -1 -> {
+
+                        }
+                        -2 -> {
+
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Handle exception
+                failedAttempts++
+            }
         }
 
         // INITIALIZATION JOB
         /*
         val task = Timer.scheduleAtFixedRate(task, after, interval)
-
 
         val job = GlobalScope.launch(Dispatchers.IO) {
             if (WIFI_STATE_ENABLED != wManager.wifiState) {
@@ -229,74 +382,33 @@ class Application_Wifi : Application(), SensorEventListener {
         workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, WInit_wk)
         */
 
-        val job_Scope = CoroutineScope(SupervisorJob())
-
-        var failedAttempts = 0
-
-        while (failedAttempts < MAXTRY) {
-            when (state) {
-                0 -> {
-                    job_Scope.launch {
-                        if (init(this@Application_Wifi)){
-                            state ++
-                        }
-                        else{
-                            failedAttempts++
-                        }
-                    }
-                }
-                1 -> {
-                    job_Scope.launch {
-                        try {
-                            if (init(this@Application_Wifi)){
-                                state ++
-                            }
-                            else{
-                                failedAttempts++
-                            }
-                        } catch (e: Exception) {
-                            // Handle exception
-                            failedAttempts++
-                        }
-                    }
-                }
-                2 -> {
-                    job_Scope.launch {
-                        try {
-                            if (init(this@Application_Wifi)){
-                                state ++
-                            }
-                            else{
-                                failedAttempts++
-                            }
-                        } catch (e: Exception) {
-                            // Handle exception
-                            failedAttempts++
-                        }
-                    }
-                }
-                else -> {
-
-                }
-            }
-        }
         onTerminate()
     }
 
     fun isMoving(): Boolean {
+        var acc = getAcc()
+        var grav = getGrav()
+        var vectorAcc = 0.0f
+        var vectorGrav = 0.0f
+        var counter = 1
         object : CountDownTimer(TIMESONSORREAD.toLong(), 250) {
             override fun onTick(millisUntilFinished: Long) {
-
+                acc += getAcc()
+                grav += getGrav()
+                counter += 1
             }
 
             override fun onFinish() {
-
+                acc.mean(counter)
+                grav.mean(counter)
+                vectorAcc = sqrt((acc.x * acc.x) + (acc.y * acc.y) + (acc.z * acc.z))
+                vectorGrav = sqrt((grav.x * grav.x) + (grav.y * grav.y) + (grav.z * grav.z))
             }
         }.start()
-        // fazer o codigo de detectar o movimento
+        return (((vectorAcc * 1.2) > vectorGrav) && ((vectorAcc * 0.8) < vectorGrav))
     }
 
-    //fun <T> Sequence<T>.repeat(n: Int) = sequence { repeat(n) { yieldAll(this@repeat) } }
+//fun <T> Sequence<T>.repeat(n: Int) = sequence { repeat(n) { yieldAll(this@repeat) } }
 
     suspend fun init(Context: Application_Wifi): Boolean = withContext(Dispatchers.IO) {
         for (i in 1..MAXTRY) {
@@ -305,11 +417,12 @@ class Application_Wifi : Application(), SensorEventListener {
             }
             if (WifiManager.WIFI_STATE_ENABLED != wManager.wifiState) {
                 var myToast = Toast.makeText(applicationContext,
-                    "Por Favor Ligar O Wifi",
+                    "Por Favor Ligar O Wifi :Try".plus(i.toString()),
                     Toast.LENGTH_SHORT)
                 myToast.show()
+                delay(1000L)
             } else {
-                if (checkNetwork()) {
+                if (updateMyConnection()) {
                     if (!Context::sensorManager.isInitialized) {
                         sensorManager =
                             Context.applicationContext.getSystemService(SENSOR_SERVICE) as SensorManager;
@@ -350,19 +463,47 @@ class Application_Wifi : Application(), SensorEventListener {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun accUpdate(event: SensorEvent) {
         Log.d("acc", event.toString());
-        acc_data = SensorData(
-            (event.values[0] + acc_data.x) / 2,
-            (event.values[1] + acc_data.y) / 2,
-            (event.values[2] + acc_data.z) / 2)
+        try {
+            accDataLock.lock()
+            accData = SensorData(
+                (event.values[0] + accData.x) / 2,
+                (event.values[1] + accData.y) / 2,
+                (event.values[2] + accData.z) / 2)
+        } finally {
+            accDataLock.unlock()
+        }
+    }
+
+    private fun getAcc(): SensorData {
+        try {
+            accDataLock.lock()
+            return accData
+        } finally {
+            accDataLock.unlock()
+        }
+    }
+
+    private fun getGrav(): SensorData {
+        try {
+            accDataLock.lock()
+            return gravData
+        } finally {
+            accDataLock.unlock()
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
     private fun gravUpdate(event: SensorEvent) {
         Log.d("grav", event.toString());
-        grav_data = SensorData(
-            (event.values[0] + grav_data.x) / 2,
-            (event.values[1] + grav_data.y) / 2,
-            (event.values[2] + grav_data.z) / 2)
+        try {
+            gravDataLock.lock()
+            gravData = SensorData(
+                (event.values[0] + gravData.x) / 2,
+                (event.values[1] + gravData.y) / 2,
+                (event.values[2] + gravData.z) / 2)
+        } finally {
+            gravDataLock.unlock()
+        }
     }
 
 
