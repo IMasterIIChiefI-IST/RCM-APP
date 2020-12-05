@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+
     <uses-permission
         android:name="android.permission.BIND_APPWIDGET"
         tools:ignore="ProtectedPermissions" />
@@ -22,21 +23,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Application_wifi">
-        <!--
-                <service android:name=".Send_Data" />
 
-                <service android:name=".Scan_Wifi" />
+        <service
+            android:name=".Services.SendData"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
-                <service
-                    android:name=".Send_Data"
-                    android:exported="true"
-                    android:permission="android.permission.BIND_JOB_SERVICE" />
-
-                <service
-                    android:name=".Scan_Wifi"
-                    android:exported="true"
-                    android:permission="android.permission.BIND_JOB_SERVICE" />
-        -->
 
         <receiver android:name=".NewAppWidget">
             <intent-filter>

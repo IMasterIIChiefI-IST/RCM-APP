@@ -23,6 +23,9 @@ import androidx.annotation.RequiresApi
 import androidx.collection.CircularArray
 import androidx.work.WorkManager
 import kotlinx.coroutines.*
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.math.sqrt
 
@@ -33,14 +36,14 @@ import kotlin.math.sqrt
 // https://developer.android.com/reference/android/net/wifi/rtt/package-summary
 // https://stackoverflow.com/questions/8317331/detecting-when-screen-is-locked !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // https://stackoverflow.com/questions/11688689/save-variables-after-quitting-application
+// https://stackoverflow.com/questions/47871868/what-does-the-suspend-function-mean-in-a-kotlin-coroutine
+// https://developer.android.com/guide/components/services
 /*
 Aplicaçao corre apenas
 quando esta ligado ao Eduroam
 quando não se esta a mexer
-quando o telemovel esta em Low State em Usage
+quando o telemovel esta em Low State em Usage aka locked
 */
-
-
 
 class Application_Wifi : Application(), SensorEventListener {
 
@@ -90,7 +93,7 @@ class Application_Wifi : Application(), SensorEventListener {
     var Update_period: Int = 500000
 
     lateinit var pManager: PowerManager
-    var keyguardManager = this.getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+    var keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
 
     val workManager: WorkManager = WorkManager.getInstance(this)
     val job_Scope = CoroutineScope(SupervisorJob())
@@ -117,6 +120,24 @@ class Application_Wifi : Application(), SensorEventListener {
     var dataReports = CircularArray<List<WifiData>>(DATASIZE)
     private val dataReportsLock = ReentrantLock()
 
+    fun DataToJson(data: List<WifiData>): String {
+
+        var mainJson = JSONObject();
+        var dataJson = JSONArray();
+        try {
+            mainJson.put("size", data.size);
+            data.forEach() {
+                dataJson.put(it.ToJson());
+            }
+            mainJson.put("data", dataJson);
+            return mainJson.toString();
+
+        } catch (e:JSONException) {
+            throw e
+        }
+
+    }
+
     data class SensorData(
         var x: Float,
         var y: Float,
@@ -141,8 +162,36 @@ class Application_Wifi : Application(), SensorEventListener {
         val rssi: Int,
         val frequency: Int,
         val connected: Boolean
-    )
+    ) {
+        fun ToJson(data: JSONObject): JSONObject {
+            try {
+                data.put("SSID", SSID);
+                data.put("BSSID", BSSID);
+                data.put("rssi", rssi);
+                data.put("frequency", frequency);
+                data.put("connected", connected);
+                return data
 
+            } catch (e:JSONException) {
+                throw e
+            }
+        }
+
+        fun ToJson(): JSONObject {
+            val dataJson = JSONObject();
+            try {
+                dataJson.put("SSID", SSID);
+                dataJson.put("BSSID", BSSID);
+                dataJson.put("rssi", rssi);
+                dataJson.put("frequency", frequency);
+                dataJson.put("connected", connected);
+                return dataJson
+
+            } catch (e:JSONException) {
+                throw e
+            }
+        }
+    }
 
 
     private val broadcastReceiver = object : BroadcastReceiver() {
@@ -155,15 +204,21 @@ class Application_Wifi : Application(), SensorEventListener {
             ) {
                 Toast.makeText(context, "Wifi Connected!", Toast.LENGTH_SHORT).show()
                 if (updateMyConnection()) {
+                    //ndad
 
                 } else {
+                    //depende onde estou
                     //CANCEL ALL JOBS
-                    //un register
+                    //un register sensores
+                    //unbind
                     //INIT
                 }
             } else {
                 Toast.makeText(context, "Wifi Not Connected!", Toast.LENGTH_SHORT).show()
                 //CANCEL ALL JOBS
+                //un register sensores
+                //unbind
+                //INIT
             }
         }
 
@@ -229,49 +284,34 @@ class Application_Wifi : Application(), SensorEventListener {
                                 if (isNotMoving() && keyguardManager.isKeyguardLocked) {
                                     updateOtherConnection()
                                     try {
-                                        if (dataReports.size() <= DATASIZE) {
-                                            if (getOtherConnection().isNullOrEmpty()) {
-                                                dataReportsLock.lock()
-                                                dataReports.addFirst(listOf(getMyConnection()))
-                                            } else {
-                                                dataReportsLock.lock()
-                                                dataReports.addFirst(getOtherConnection()?.plusElement(
-                                                    getMyConnection()))
-                                            }
+                                        dataReportsLock.lock()
+                                        if (dataReports.size() >= DATASIZE) {
+                                            dataReports.popLast()
+                                        }
+                                        if (getOtherConnection().isNullOrEmpty()) {
+                                            dataReports.addFirst(listOf(getMyConnection()))
                                         } else {
-                                            if (getOtherConnection().isNullOrEmpty()) {
-                                                dataReportsLock.lock()
-                                                dataReports.popLast()
-                                                dataReports.addFirst(listOf(getMyConnection()))
-                                            } else {
-                                                dataReportsLock.lock()
-                                                dataReports.popLast()
-                                                dataReports.addFirst(getOtherConnection()?.plusElement(
-                                                    getMyConnection()))
-                                            }
+                                            dataReports.addFirst(getOtherConnection()?.plusElement(
+                                                getMyConnection()))
                                         }
                                     } finally {
                                         dataReportsLock.unlock()
                                     }
-                                    machine_State++
                                     failedAttempts = 0
+                                    //bind service
                                 }
                             } else {
                                 failedAttempts++
                             }
                         }
-                        2 -> {
-
-
-                        }
                         -1 -> {
-
-                        }
-                        -2 -> {
-
+                            machine_State = 1
+                            failedAttempts = 0
+                            sensorManager.unregisterListener(this@Application_Wifi)
+                            //unbind service
                         }
                     }
-                  delay(1000)
+                    delay(1000)
                 }
             } catch (e: Exception) {
                 // Handle exception
@@ -378,11 +418,13 @@ workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, W
                     appWidgetManager.updateAppWidget(ComponentName(applicationContext,
                         NewAppWidget::javaClass.get(NewAppWidget())),
                         RemoteViews(this.packageName, R.layout.new_app_widget))
-                    return true
-                    /*ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
-                        NewAppWidget::javaClass.get(NewAppWidget()))))
+                    /*
+                    ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,NewAppWidget::javaClass.get(NewAppWidget()))))
                     acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
-                    grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario */
+                    grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
+                    */
+                    return true
+
                 } else {
                     delay(1000L)
                 }
@@ -422,12 +464,17 @@ workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, W
                     } else
                         return false
                 } else {
+                    Toast.makeText(
+                        applicationContext,
+                        "Por Favor Ligar a rede internet",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     myConnectionLock.lock()
                     myConnectionResults = WifiData(
                         "N/Connected",
                         "0",
                         0,
-                        0,
+                        -1,
                         false
                     )
                     return false
@@ -475,7 +522,6 @@ workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, W
             myConnectionLock.unlock()
         }
     }
-
 
     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
 
@@ -533,11 +579,9 @@ workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, W
         }
     }
 
-
     override fun onTerminate() {
         super.onTerminate()
         sensorManager.unregisterListener(this)
-        //workManager.cancelAllWorkByTag("UI")
         TODO("apagar as threads todas")
     }
 }
