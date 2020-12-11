@@ -1,7 +1,5 @@
 package com.example.application_wifi
 
-import android.R
-import android.R.style.Widget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -44,16 +42,14 @@ class NewAppWidget : AppWidgetProvider() {
 }
 
 internal fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-    val widgetText_top = context.getString(R.string.appwidget_text_top)
-    val widgetText_bot = context.getString(R.string.appwidget_text_bot)
     // Construct the RemoteViews object
     val views = RemoteViews(context.packageName, R.layout.new_app_widget)
-    views.setTextViewText(R.id.appwidget_text_top, widgetText_top)
-    views.setTextViewText(R.id.appwidget_text_bot, widgetText_bot)
+    views.setTextViewText(R.id.appwidget_text_top, )
+    views.setTextViewText(R.id.appwidget_text_bot, )
     // Instruct the widget manager to update the widget
     appWidgetManager.updateAppWidget(appWidgetId, views)
-    val intent = Intent(this, Settings::class.java)
-    val pendingIntent = PendingIntent.getActivity(this, 0, intent, 0)
+    val intent = Intent(this, Application_Wifi::class.java)
+    val pendingIntent = PendingIntent.getActivity(this.context, 0, intent, 0)
 
     views.setOnClickPendingIntent(R.id.btnActivate, pendingIntent)
 

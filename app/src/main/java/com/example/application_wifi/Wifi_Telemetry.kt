@@ -1,6 +1,7 @@
 package com.example.application_wifi
 
 import android.app.Application
+import android.app.IntentService
 import android.app.KeyguardManager
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
@@ -26,6 +27,9 @@ import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.io.DataOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.math.sqrt
 
@@ -45,11 +49,13 @@ quando não se esta a mexer
 quando o telemovel esta em Low State em Usage aka locked
 */
 
+
 class Application_Wifi : Application(), SensorEventListener {
 
-    private val TIMESONSORREAD = 2
+    private val TIMESONSORREAD: Long = 2
     private val MAXTRY = 10
     private val DATASIZE = 8 //(2^3)
+
 /*
     class Event<T> {
         private val handlers = arrayListOf<(Event<T>.(T) -> Unit)>()
@@ -86,16 +92,47 @@ class Application_Wifi : Application(), SensorEventListener {
       Fair -60 to -70 dBm
       Weak < -70 dBm
     */
+    class LiteRequestService : IntentService("LiteRequestService") {
 
-    val DefaultValue = 500000
-    var machine_State = 0
+        override fun onHandleIntent(intent: Intent?) {
+            val dataToSend = intent?.getStringExtra("json")
+            var response = "";
+            try {
+                val url = URL("https://hookbin.com/6JXza2o9xQcLbb031Y7B")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST";
+                conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.doOutput = true;
+                conn.doInput = true;
+
+                val os = DataOutputStream(conn.outputStream);
+                os.writeBytes(dataToSend);
+
+                os.flush();
+                os.close();
+
+                response = conn.responseCode.toString()
+                Log.i("STATUS", response);
+                conn.disconnect();
+            } catch (e: Exception) {
+                e.printStackTrace();
+                Thread.currentThread().interrupt()
+            }
+
+        }
+    }
+
+    val DefaultValue = 5000
+    var machineState = 0
     var failedAttempts = 0
-    var Update_period: Int = 500000
+    var Update_period = 1000
+
+    var buttonState = true
 
     lateinit var pManager: PowerManager
     var keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
 
-    val workManager: WorkManager = WorkManager.getInstance(this)
     val job_Scope = CoroutineScope(SupervisorJob())
 
     val appWidgetManager: AppWidgetManager = AppWidgetManager.getInstance(this)
@@ -122,8 +159,8 @@ class Application_Wifi : Application(), SensorEventListener {
 
     fun DataToJson(data: List<WifiData>): String {
 
-        var mainJson = JSONObject();
-        var dataJson = JSONArray();
+        val mainJson = JSONObject();
+        val dataJson = JSONArray();
         try {
             mainJson.put("size", data.size);
             data.forEach() {
@@ -132,7 +169,7 @@ class Application_Wifi : Application(), SensorEventListener {
             mainJson.put("data", dataJson);
             return mainJson.toString();
 
-        } catch (e:JSONException) {
+        } catch (e: JSONException) {
             throw e
         }
 
@@ -172,7 +209,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 data.put("connected", connected);
                 return data
 
-            } catch (e:JSONException) {
+            } catch (e: JSONException) {
                 throw e
             }
         }
@@ -187,7 +224,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 dataJson.put("connected", connected);
                 return dataJson
 
-            } catch (e:JSONException) {
+            } catch (e: JSONException) {
                 throw e
             }
         }
@@ -204,60 +241,33 @@ class Application_Wifi : Application(), SensorEventListener {
             ) {
                 Toast.makeText(context, "Wifi Connected!", Toast.LENGTH_SHORT).show()
                 if (updateMyConnection()) {
-                    //ndad
-
+                    if (machineState == 1) {
+                        sensorManager.unregisterListener(this@Application_Wifi)
+                        --machineState
+                    }
                 } else {
-                    //depende onde estou
-                    //CANCEL ALL JOBS
-                    //un register sensores
-                    //unbind
-                    //INIT
+                    ++failedAttempts
                 }
             } else {
                 Toast.makeText(context, "Wifi Not Connected!", Toast.LENGTH_SHORT).show()
-                //CANCEL ALL JOBS
-                //un register sensores
-                //unbind
-                //INIT
+                sensorManager.unregisterListener(this@Application_Wifi)
+                failedAttempts = MAXTRY
             }
         }
-
     }
 
 
     override fun onCreate() {
         super.onCreate()
-        /*
-        val init_constraints = Constraints.Builder()
-            .setRequiresBatteryNotLow(true)
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-        val WInit = PeriodicWorkRequest.Builder(PWorker::class.java, 10, TimeUnit.SECONDS)
-            .setConstraints(init_constraints)
-        val data = Data.Builder()
-        data.put("application_context", this)
-        val WInit_wk = WInit.setInputData(data.build()).build()
-        workManager.enqueueUniquePeriodicWork("Program", ExistingPeriodicWorkPolicy.KEEP, WInit_wk)
 
-        val job_Scope = CoroutineScope(SupervisorJob())
-
-        job_Scope.launch {
-            try {
-                init(this@Application_Wifi)
-            } catch (e: Exception) {
-                val myToast = Toast.makeText(applicationContext, e.toString(), Toast.LENGTH_SHORT)
-                myToast.show()
-            }
-        }
-        */
-
-        machine_State = 0
+        machineState = 0
         failedAttempts = 0
 
         registerReceiver(broadcastReceiver, IntentFilter().apply {
             addAction("android.net.wifi.STATE_CHANGE")
             addAction("android.net.conn.CONNECTIVITY_CHANGE")
         })
+
 
         // TARGET CONNECTION CREATION
         target_connection = WifiData("eduroam", "MAC", 0, 0, true)
@@ -270,111 +280,62 @@ class Application_Wifi : Application(), SensorEventListener {
         job_Scope.launch(Dispatchers.Unconfined) {
             try {
                 while (failedAttempts < MAXTRY) {
-                    when (machine_State) {
-                        0 -> {
-                            if (init()) {
-                                machine_State++
-                                failedAttempts = 0
-                            } else {
-                                failedAttempts++
-                            }
-                        }
-                        1 -> {
-                            if (updateMyConnection()) {
-                                if (isNotMoving() && keyguardManager.isKeyguardLocked) {
-                                    updateOtherConnection()
-                                    try {
-                                        dataReportsLock.lock()
-                                        if (dataReports.size() >= DATASIZE) {
-                                            dataReports.popLast()
-                                        }
-                                        if (getOtherConnection().isNullOrEmpty()) {
-                                            dataReports.addFirst(listOf(getMyConnection()))
-                                        } else {
-                                            dataReports.addFirst(getOtherConnection()?.plusElement(
-                                                getMyConnection()))
-                                        }
-                                    } finally {
-                                        dataReportsLock.unlock()
-                                    }
+                    if (buttonState) {
+                        when (machineState) {
+                            0 -> {
+                                if (init()) {
+                                    ++machineState
                                     failedAttempts = 0
-                                    //bind service
+                                } else {
+                                    ++failedAttempts
                                 }
-                            } else {
-                                failedAttempts++
                             }
-                        }
-                        -1 -> {
-                            machine_State = 1
-                            failedAttempts = 0
-                            sensorManager.unregisterListener(this@Application_Wifi)
-                            //unbind service
+                            1 -> {
+                                if (updateMyConnection()) {
+                                    if (isNotMoving() && keyguardManager.isKeyguardLocked) {
+                                        updateOtherConnection()
+                                        try {
+                                            dataReportsLock.lock()
+                                            if (dataReports.size() >= DATASIZE) {
+                                                dataReports.popLast()
+                                            }
+                                            if (getOtherConnection().isNullOrEmpty()) {
+                                                dataReports.addFirst(listOf(getMyConnection()))
+                                            } else {
+                                                dataReports.addFirst(getOtherConnection()?.plusElement(
+                                                    getMyConnection()))
+                                            }
+                                        } finally {
+                                            dataReportsLock.unlock()
+                                        }
+                                        failedAttempts = 0
+                                        val intent = Intent(this@Application_Wifi,
+                                            LiteRequestService::class.java)
+                                        intent.putExtra("json", DataToJson(dataReports.popLast()))
+                                        startActivity(intent)
+                                    }
+                                } else {
+                                    ++failedAttempts
+                                }
+                            }
                         }
                     }
-                    delay(1000)
+                    delay(DefaultValue.toLong())
                 }
             } catch (e: Exception) {
-                // Handle exception
                 onTerminate()
             }
         }
-
-// INITIALIZATION JOB
-/*
-val task = Timer.scheduleAtFixedRate(task, after, interval)
-
-val job = GlobalScope.launch(Dispatchers.IO) {
-    if (WIFI_STATE_ENABLED != wManager.wifiState) {
-        //launch(Dispatchers.Main) { // TODO understand if necessary
-        Toast.makeText(applicationContext,
-            "Por Favor Ligar O Wifi",
-            Toast.LENGTH_SHORT).show()
-        //}
-    } else {
-        if (checkNetwork()) {
-            sensorManager.registerListener(this@Application_Wifi,
-                acc_sensor,
-                Update_period)
-            sensorManager.registerListener(this@Application_Wifi,
-                grav_sensor,
-                Update_period)
-            pManager =
-                applicationContext.getSystemService(POWER_SERVICE) as PowerManager
-            appWidgetManager.updateAppWidget(
-                ComponentName(applicationContext, NewAppWidget::class.java),
-                RemoteViews(packageName, R.layout.new_app_widget)
-            )
-            cancel("completed")
-            //ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
-            //    NewAppWidget::javaClass.get(NewAppWidget()))))
-            //acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
-            //grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
-        }
-    }
-}
-
-val init_constraints = Constraints.Builder()
-    .setRequiresBatteryNotLow(true)
-    .setRequiredNetworkType(NetworkType.CONNECTED)
-    .build()
-val WInit = PeriodicWorkRequest.Builder(Init_PWorker::class.java, 10, TimeUnit.SECONDS)
-    .setConstraints(init_constraints)
-val data = Data.Builder()
-data.put("application_context",this)
-val WInit_wk = WInit.setInputData(data.build()).build()
-workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, WInit_wk)
-*/
-
         onTerminate()
     }
 
     private fun isNotMoving(): Boolean {
-        var acc = getAcc()
-        var grav = getGrav()
+        val acc = getAcc()
+        val grav = getGrav()
         var vectorAcc = 0.0f
         var vectorGrav = 0.0f
         var counter = 1
-        object : CountDownTimer(TIMESONSORREAD.toLong(), 250) {
+        object : CountDownTimer(TIMESONSORREAD, TIMESONSORREAD / 8) {
             override fun onTick(millisUntilFinished: Long) {
                 acc += getAcc()
                 grav += getGrav()
@@ -390,7 +351,6 @@ workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, W
         }.start()
         return (((vectorAcc * 1.2) > vectorGrav) && ((vectorAcc * 0.8) < vectorGrav))
     }
-
 
     private suspend fun init(): Boolean {
         for (i in 1..MAXTRY) {
@@ -418,13 +378,11 @@ workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, W
                     appWidgetManager.updateAppWidget(ComponentName(applicationContext,
                         NewAppWidget::javaClass.get(NewAppWidget())),
                         RemoteViews(this.packageName, R.layout.new_app_widget))
-                    /*
-                    ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,NewAppWidget::javaClass.get(NewAppWidget()))))
-                    acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) -> nao sei se e necessario
-                    grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY) -> nao sei se e necessario
-                    */
+                    ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
+                        NewAppWidget::javaClass.get(NewAppWidget()))))
+                    acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+                    grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
                     return true
-
                 } else {
                     delay(1000L)
                 }
@@ -581,8 +539,9 @@ workManager.enqueueUniquePeriodicWork("INIT", ExistingPeriodicWorkPolicy.KEEP, W
 
     override fun onTerminate() {
         super.onTerminate()
+        unregisterReceiver(broadcastReceiver)
         sensorManager.unregisterListener(this)
-        TODO("apagar as threads todas")
     }
+
 }
 

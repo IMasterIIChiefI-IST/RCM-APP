@@ -3,142 +3,85 @@ package com.example.application_wifi.Services
 
 import android.app.Service
 import android.content.Intent
-import android.os.Handler
-import android.os.HandlerThread
-import android.os.Looper
-import android.os.Process.THREAD_PRIORITY_BACKGROUND
-import android.widget.Toast
+import android.os.*
+import android.util.Log
+import kotlinx.coroutines.*
+import java.io.DataOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
+
+//https://stackoverflow.com/questions/3505930/make-an-http-request-with-android
+/*
+Service.START_STICKY
+Service is restarted if it gets terminated. Intent data passed to the onStartCommand method is null. Used for services which manages their own state and do not depend on the Intent data.
+
+
+Service.START_NOT_STICKY
+Service is not restarted. Used for services which are periodically triggered anyway. The service is only restarted if the runtime has pending startService() calls since the service termination.
+
+
+Service.START_REDELIVER_INTENT
+Similar to Service.START_STICKY but the original Intent is re-delivered to the onStartCommand method.
+
+
+https://developer.android.com/reference/android/app/job/JobService
+ */
 class SendData : Service() {
 
-    private var serviceLooper: Looper? = null
-    private var serviceHandler: ServiceHandler? = null
+    override fun onBind(intent: Intent) = LocalBinder()
 
-    // Handler that receives messages from the thread
-    private inner class ServiceHandler(looper: Looper) : Handler(looper) {
+    inner class LocalBinder : Binder() {
+        fun getService() = this@SendData
+    }
 
-        override fun handleMessage(msg: Message) {
-            // Normally we would do some work here, like download a file.
-            // For our sample, we just sleep for 5 seconds.
+    val job_Scope = CoroutineScope(SupervisorJob())
+
+    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Unit {
+        var jsonstring = intent.extras as String
+        job_Scope.launch(Dispatchers.Unconfined) {
             try {
-                Thread.sleep(5000)
-            } catch (e: InterruptedException) {
-                // Restore interrupt status.
-                Thread.currentThread().interrupt()
+                var task = DoBackgroundTask()
+                var response = task.execute(jsonstring);
+                delay(10000);
+            } catch (e: Exception) {
+                // Handle exception
             }
-
-            // Stop the service using the startId, so that we don't stop
-            // the service in the middle of handling another job
-            stopSelf(msg.arg1)
         }
-
-        fun sendMessage(msg: Any): Any {
-
-        }
+        return START_NOT_STICKY as Unit;
     }
 
-    override fun onCreate() {
-        // Start up the thread running the service.  Note that we create a
-        // separate thread because the service normally runs in the process's
-        // main thread, which we don't want to block.  We also make it
-        // background priority so CPU-intensive work will not disrupt our UI.
-        HandlerThread("ServiceStartArguments", Process.THREAD_PRIORITY_BACKGROUND).apply {
-            start()
+    //android.os.AsyncTask<Params, Progress, Result>
+    private class DoBackgroundTask : AsyncTask<String, String, String>() {
 
-            // Get the HandlerThread's Looper and use it for our Handler
-            serviceLooper = looper
-            serviceHandler = ServiceHandler(looper)
-        }
-    }
+        override fun doInBackground(vararg params: String?): String? {
+            var response = "";
+            var dataToSend = params[0] as String;
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        Toast.makeText(this, "service starting", Toast.LENGTH_SHORT).show()
+            try {
+                val url = URL("asd")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setDoOutput(true);
+                conn.setDoInput(true);
 
-        // For each start request, send a message to start a job and deliver the
-        // start ID so we know which request we're stopping when we finish the job
-        serviceHandler?.obtainMessage()?.also { msg ->
-            msg.arg1 = startId
-            serviceHandler?.sendMessage(msg)
-        }
+                val os = DataOutputStream(conn.getOutputStream());
+                os.writeBytes(dataToSend);
 
-        // If we get killed, after returning from here, restart
-        return START_STICKY
-    }
+                os.flush();
+                os.close();
 
-    override fun onBind(intent: Intent): IBinder? {
-        // We don't provide binding, so return null
-        return null
-    }
-
-    override fun onDestroy() {
-        Toast.makeText(this, "service done", Toast.LENGTH_SHORT).show()
-    }
-/*
-public class ServiceStatusUpdate extends Service {
-
-@Override
-public IBinder onBind(Intent intent) {
-    // TODO Auto-generated method stub
-    return null;
-}
-
-@Override
-public int onStartCommand(Intent intent, int flags, int startId) {
-    while(true)
-    {
-        try {
-            Thread.sleep(10000);
-        } catch (InterruptedException e) {
-            new DoBackgroundTask().execute(Utilities.QUERYstatus);
-            e.printStackTrace();
-        }
-        return START_STICKY;
-    }
-}
-
-private class DoBackgroundTask extends AsyncTask<String, String, String> {
-
-    @Override
-    protected String doInBackground(String... params) {
-        String response = "";
-        String dataToSend = params[0];
-        Log.i("FROM STATS SERVICE DoBackgroundTask", dataToSend);
-        HttpClient httpClient = new DefaultHttpClient();
-        HttpPost httpPost = new HttpPost(Utilities.AGENT_URL);
-
-        try {
-            httpPost.setEntity(new StringEntity(dataToSend, "UTF-8"));
-
-            // Set up the header types needed to properly transfer JSON
-            httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setHeader("Accept-Encoding", "application/json");
-            httpPost.setHeader("Accept-Language", "en-US");
-
-            // Execute POST
-            HttpResponse httpResponse = httpClient.execute(httpPost);
-            HttpEntity responseEntity = httpResponse.getEntity();
-            if (responseEntity != null) {
-                response = EntityUtils.toString(responseEntity);
-            } else {
-                response = "{\"NO DATA:\"NO DATA\"}";
+                response =  conn.getResponseCode().toString()
+                Log.i("STATUS", response);
+                conn.disconnect();
+            } catch (e: Exception) {
+                e.printStackTrace();
             }
-        } catch (ClientProtocolException e) {
-            response = "{\"ERROR\":" + e.getMessage().toString() + "}";
-        } catch (IOException e) {
-            response = "{\"ERROR\":" + e.getMessage().toString() + "}";
+            return response ;
         }
-        return response;
+
     }
 
-    @Override
-    protected void onPostExecute(String result) {
-        Utilities.STATUS = result;
-        Log.i("FROM STATUS SERVICE: STATUS IS:", Utilities.STATUS);
-        super.onPostExecute(result);
-    }
-}
-}
-        }
-    }
-*/
 }
