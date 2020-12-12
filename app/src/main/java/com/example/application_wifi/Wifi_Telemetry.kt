@@ -22,7 +22,6 @@ import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.collection.CircularArray
-import androidx.work.WorkManager
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONException

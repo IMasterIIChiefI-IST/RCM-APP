@@ -44,12 +44,12 @@ class NewAppWidget : AppWidgetProvider() {
 internal fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
     // Construct the RemoteViews object
     val views = RemoteViews(context.packageName, R.layout.new_app_widget)
-    views.setTextViewText(R.id.appwidget_text_top, )
-    views.setTextViewText(R.id.appwidget_text_bot, )
+    views.setTextViewText(R.id.appwidget_text_top,"hello" )
+    views.setTextViewText(R.id.appwidget_text_bot,"hello" )
     // Instruct the widget manager to update the widget
     appWidgetManager.updateAppWidget(appWidgetId, views)
     val intent = Intent(this, Application_Wifi::class.java)
-    val pendingIntent = PendingIntent.getActivity(this.context, 0, intent, 0)
+    val pendingIntent = PendingIntent.getActivity(this, 0, intent, 0)
 
     views.setOnClickPendingIntent(R.id.btnActivate, pendingIntent)
 

@@ -37,7 +37,7 @@ class SendData : Service() {
 
     val job_Scope = CoroutineScope(SupervisorJob())
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Unit {
+    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         var jsonstring = intent.extras as String
         job_Scope.launch(Dispatchers.Unconfined) {
             try {
@@ -48,7 +48,7 @@ class SendData : Service() {
                 // Handle exception
             }
         }
-        return START_NOT_STICKY as Unit;
+        return START_NOT_STICKY ;
     }
 
     //android.os.AsyncTask<Params, Progress, Result>
