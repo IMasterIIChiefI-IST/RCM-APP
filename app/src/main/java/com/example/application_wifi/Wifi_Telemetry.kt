@@ -52,7 +52,7 @@ quando o telemovel esta em Low State em Usage aka locked
 class Application_Wifi : Application(), SensorEventListener {
 
     private val TIMESONSORREAD: Long = 2
-    private val MAXTRY = 10
+    private val MAXTRY = 5
     private val DATASIZE = 8 //(2^3)
 
 /*
@@ -102,7 +102,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 conn.requestMethod = "POST";
                 conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
                 conn.setRequestProperty("Accept", "application/json");
-                conn.doOutput = true;
+                conn.doOutput = true
                 conn.doInput = true;
 
                 val os = DataOutputStream(conn.outputStream);
@@ -130,19 +130,21 @@ class Application_Wifi : Application(), SensorEventListener {
     var buttonState = true
 
     lateinit var pManager: PowerManager
-    var keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
 
-    val job_Scope = CoroutineScope(SupervisorJob())
-
-    val appWidgetManager: AppWidgetManager = AppWidgetManager.getInstance(this)
+    //val jobScope = CoroutineScope(SupervisorJob())
+    private lateinit var appWidgetManager: AppWidgetManager
     var ids = IntArray(0)
-    lateinit var appWidgetHost: AppWidgetHost
+    //lateinit var appWidgetHost: AppWidgetHost
+
+
 
     lateinit var sensorManager: SensorManager
     lateinit var acc_sensor: Sensor
     lateinit var grav_sensor: Sensor
     lateinit var accData: SensorData
     lateinit var gravData: SensorData
+    var accregs: Boolean = false
+    var gravregs: Boolean = false
     private val accDataLock = ReentrantLock()
     private val gravDataLock = ReentrantLock()
 
@@ -201,7 +203,7 @@ class Application_Wifi : Application(), SensorEventListener {
     ) {
         fun ToJson(data: JSONObject): JSONObject {
             try {
-                data.put("SSID", SSID);
+                data.put("SSID", SSID)
                 data.put("BSSID", BSSID);
                 data.put("rssi", rssi);
                 data.put("frequency", frequency);
@@ -229,6 +231,24 @@ class Application_Wifi : Application(), SensorEventListener {
         }
     }
 
+    fun isDeviceLocked(context: Context): Boolean {
+        var isLocked = false
+        val keyguardManager = context.getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        val inKeyguardRestrictedInputMode = keyguardManager.inKeyguardRestrictedInputMode()
+        isLocked = if (inKeyguardRestrictedInputMode) {
+            true
+        } else {
+
+            val powerManager = context.getSystemService(POWER_SERVICE) as PowerManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+                !powerManager.isInteractive
+            } else {
+                !powerManager.isScreenOn
+            }
+        }
+        return isLocked
+    }
+
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
@@ -241,7 +261,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 Toast.makeText(context, "Wifi Connected!", Toast.LENGTH_SHORT).show()
                 if (updateMyConnection()) {
                     if (machineState == 1) {
-                        sensorManager.unregisterListener(this@Application_Wifi)
+                        unregister(this@Application_Wifi)
                         --machineState
                     }
                 } else {
@@ -249,7 +269,7 @@ class Application_Wifi : Application(), SensorEventListener {
                 }
             } else {
                 Toast.makeText(context, "Wifi Not Connected!", Toast.LENGTH_SHORT).show()
-                sensorManager.unregisterListener(this@Application_Wifi)
+                unregister(this@Application_Wifi)
                 failedAttempts = MAXTRY
             }
         }
@@ -262,12 +282,6 @@ class Application_Wifi : Application(), SensorEventListener {
         machineState = 0
         failedAttempts = 0
 
-        registerReceiver(broadcastReceiver, IntentFilter().apply {
-            addAction("android.net.wifi.STATE_CHANGE")
-            addAction("android.net.conn.CONNECTIVITY_CHANGE")
-        })
-
-
         // TARGET CONNECTION CREATION
         target_connection = WifiData("eduroam", "MAC", 0, 0, true)
 
@@ -275,8 +289,11 @@ class Application_Wifi : Application(), SensorEventListener {
         if (!this::wManager.isInitialized) {
             wManager = this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
         }
+        if (!this::appWidgetManager.isInitialized) {
+            appWidgetManager = AppWidgetManager.getInstance(this)
+        }
 
-        job_Scope.launch(Dispatchers.Unconfined) {
+        GlobalScope.launch() {
             try {
                 while (failedAttempts < MAXTRY) {
                     if (buttonState) {
@@ -287,11 +304,23 @@ class Application_Wifi : Application(), SensorEventListener {
                                     failedAttempts = 0
                                 } else {
                                     ++failedAttempts
+                                    val intentWidget = Intent(this@Application_Wifi,
+                                        NewAppWidget::class.java)
+                                    intentWidget.action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                                    ids = appWidgetManager.getAppWidgetIds((ComponentName(
+                                        applicationContext,
+                                        NewAppWidget::javaClass.get(NewAppWidget()))))
+                                    intentWidget.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+                                    intentWidget.putExtra("Top", "Initializing")
+                                    intentWidget.putExtra("Bot",
+                                        "Attempt".plus(failedAttempts.toString()))
+                                    intentWidget.putExtra("Pro", "0")
+                                    sendBroadcast(intentWidget)
                                 }
                             }
                             1 -> {
                                 if (updateMyConnection()) {
-                                    if (isNotMoving() && keyguardManager.isKeyguardLocked) {
+                                    if (isNotMoving() && isDeviceLocked(this@Application_Wifi)) {//keyguardManager.isKeyguardLocked
                                         updateOtherConnection()
                                         try {
                                             dataReportsLock.lock()
@@ -312,9 +341,34 @@ class Application_Wifi : Application(), SensorEventListener {
                                             LiteRequestService::class.java)
                                         intent.putExtra("json", DataToJson(dataReports.popLast()))
                                         startActivity(intent)
+
+                                        val intentWidget = Intent(this@Application_Wifi,
+                                            NewAppWidget::class.java)
+                                        intentWidget.action =
+                                            AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                                        ids = appWidgetManager.getAppWidgetIds((ComponentName(
+                                            applicationContext,
+                                            NewAppWidget::javaClass.get(NewAppWidget()))))
+                                        intentWidget.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS,
+                                            ids)
+                                        intentWidget.putExtra("Top", getMyConnection().SSID)
+                                        intentWidget.putExtra("Bot", dataReports.size().toString())
+                                        intentWidget.putExtra("Pro", getMyConnection().rssi)
+                                        sendBroadcast(intentWidget)
                                     }
                                 } else {
                                     ++failedAttempts
+                                    val intentWidget = Intent(this@Application_Wifi,
+                                        NewAppWidget::class.java)
+                                    intentWidget.action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                                    ids = appWidgetManager.getAppWidgetIds((ComponentName(
+                                        applicationContext,
+                                        NewAppWidget::javaClass.get(NewAppWidget()))))
+                                    intentWidget.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+                                    intentWidget.putExtra("Top", "Connected")
+                                    intentWidget.putExtra("Bot", "Wrong NetWork")
+                                    intentWidget.putExtra("Pro", "0")
+                                    sendBroadcast(intentWidget)
                                 }
                             }
                         }
@@ -356,7 +410,10 @@ class Application_Wifi : Application(), SensorEventListener {
             if (!this::wManager.isInitialized) {
                 wManager = this.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
             }
-            if (WifiManager.WIFI_STATE_ENABLED != wManager.wifiState) {
+            if (!this::appWidgetManager.isInitialized) {
+                appWidgetManager = AppWidgetManager.getInstance(this)
+            }
+            if (WIFI_STATE_ENABLED != wManager.wifiState) {
                 var myToast = Toast.makeText(applicationContext,
                     "Por Favor Ligar O Wifi :Try".plus(i.toString()),
                     Toast.LENGTH_SHORT)
@@ -364,23 +421,29 @@ class Application_Wifi : Application(), SensorEventListener {
                 delay(1000L)
             } else {
                 if (updateMyConnection()) {
+
+                    val intentFilter = IntentFilter()
+                    intentFilter.addAction("android.net.wifi.STATE_CHANGE")
+                    intentFilter.addAction("android.net.conn.CONNECTIVITY_CHANGE")
+                    registerReceiver(broadcastReceiver, intentFilter)
+
                     if (!this::sensorManager.isInitialized) {
                         sensorManager =
                             this.applicationContext.getSystemService(SENSOR_SERVICE) as SensorManager;
                     }
-                    this.sensorManager.registerListener(this, acc_sensor, Update_period)
-                    this.sensorManager.registerListener(this, grav_sensor, Update_period)
+                    acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+                    grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+                    accregs  = this.sensorManager.registerListener(this, acc_sensor, Update_period)
+                    gravregs = this.sensorManager.registerListener(this, grav_sensor, Update_period)
+
                     if (!this::pManager.isInitialized) {
                         pManager =
                             this.applicationContext.getSystemService(POWER_SERVICE) as PowerManager
                     }
+
                     appWidgetManager.updateAppWidget(ComponentName(applicationContext,
                         NewAppWidget::javaClass.get(NewAppWidget())),
                         RemoteViews(this.packageName, R.layout.new_app_widget))
-                    ids = appWidgetManager.getAppWidgetIds((ComponentName(applicationContext,
-                        NewAppWidget::javaClass.get(NewAppWidget()))))
-                    acc_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-                    grav_sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
                     return true
                 } else {
                     delay(1000L)
@@ -536,11 +599,22 @@ class Application_Wifi : Application(), SensorEventListener {
         }
     }
 
+    fun unregister(context: SensorEventListener){
+        if (accregs) {
+            sensorManager.unregisterListener(context, grav_sensor)
+        }
+        if (gravregs) {
+            sensorManager.unregisterListener(context, acc_sensor)
+        }
+        if (machineState==1){
+            unregisterReceiver(broadcastReceiver)
+        }
+    }
+
+
     override fun onTerminate() {
+        unregister(this)
         super.onTerminate()
-        unregisterReceiver(broadcastReceiver)
-        sensorManager.unregisterListener(this)
     }
 
 }
-

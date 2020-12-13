@@ -11,11 +11,9 @@
     <TextView
         android:id="@+id/appwidget_text_bot"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="50dp"
         android:layout_below="@+id/appwidget_text_top"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="14dp"
-        android:layout_toEndOf="@+id/imageButton2"
+        android:layout_marginTop="0dp"
         android:autofillHints=""
         android:clickable="false"
         android:text="@string/appwidget_text_bot"
@@ -26,8 +24,8 @@
     <TextView
         android:id="@+id/appwidget_text_top"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="3dp"
+        android:layout_height="50dp"
+        android:layout_marginStart="0dp"
         android:layout_toEndOf="@+id/progressBar"
         android:autofillHints=""
         android:clickable="false"
@@ -37,19 +35,21 @@
         android:textSize="24sp"
         android:textStyle="bold|italic" />
 
-    <ImageButton
-        android:id="@+id/imageButton2"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_below="@+id/progressBar"
-        android:layout_marginTop="8dp"
-        app:srcCompat="@android:drawable/radiobutton_off_background" />
-
     <ProgressBar
         android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
         android:max="100"
         android:progressTint="#FFFFFF" />
+
+    <ImageButton
+        android:id="@+id/imageButton"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_below="@+id/appwidget_text_top"
+        android:layout_marginStart="0dp"
+        android:layout_marginTop="0dp"
+        android:layout_toEndOf="@+id/appwidget_text_bot"
+        app:srcCompat="@android:drawable/checkbox_off_background" />
 
 </RelativeLayout>
