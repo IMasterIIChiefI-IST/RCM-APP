@@ -18,11 +18,21 @@
 
     <!-- Sync Preferences -->
     <string name="attachment_summary_off">Only download attachments when manually requested</string>
-    <string name="appwidget_text_top">SSID: N/C</string>
-    <string name="appwidget_text_bot">No Report</string>
+    <string name="appwidget_text_top">Error Service not initialized</string>
+    <string name="appwidget_text_bot">No Reports</string>
     <string name="app_Button">On/Off</string>
     <string name="app_Slider">Update_Cycle:</string>
     <string name="app_settings">SETTINGS:</string>
     <string name="app_Sliderinfo">TBD</string>
     <string name="add_widget">Add widget</string>
+    <string name="appwidget_text">EXAMPLE</string>
+    <string name="title_activity_main">MainActivity</string>
+    <!-- Strings used for fragments for navigation -->
+    <string name="first_fragment_label">First Fragment</string>
+    <string name="second_fragment_label">Second Fragment</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="hello_first_fragment">Hello first fragment</string>
+    <string name="hello_second_fragment">Hello second fragment. Arg: %1$s</string>
+    <string name="update" />
 </resources>
